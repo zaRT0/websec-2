@@ -7,10 +7,12 @@ const app = express();
 
 const PORT = process.env.PORT || 3001;
 const API_KEY = process.env.YANDEX_RASP_API_KEY;
-const BASE_URL = 'https://api.rasp.yandex.net/v3.0';
+const BASE_URL = process.env.BASE_URL || 'https://api.rasp.yandex.net/v3.0/';
+const CACHE_TTL = parseInt(process.env.CACHE_TTL) || 24 * 60 * 60 * 1000;
+const CACHE_STATIONS_TTL = parseInt(process.env.CACHE_STATIONS_TTL) || 24 * 60 * 60 * 1000;
 
 if (!API_KEY) {
-    console.error('❌ Ошибка: Не найден API ключ в переменной окружения YANDEX_RASP_API_KEY');
+    console.error('Ошибка: Не найден API ключ в переменной окружения YANDEX_RASP_API_KEY');
     console.error('Создайте файл .env и добавьте ключ');
     process.exit(1);
 }
@@ -20,7 +22,22 @@ app.use(express.json());
 
 let stationsCache = null;
 let stationsCacheTime = null;
-const CACHE_TTL = 24 * 60 * 60 * 1000;
+
+function logRequest(endpoint, params) {
+    const paramsStr = Object.entries(params)
+        .map(([k, v]) => `${k}="${v}"`)
+        .join(', ');
+    console.log(`🔹 ${endpoint}: ${paramsStr}`);
+}
+
+function logResponse(endpoint, statusCode, data) {
+    console.log(`Ответ от ${endpoint}:`);
+    console.log(`   Статус: ${statusCode}`);
+    console.log(`   Поездов: ${data?.schedule?.trains?.length ?? data?.trips?.length ?? 'N/A'}`);
+    if (data?.error) {
+        console.log(`   Ошибка: ${data.error}`);
+    }
+}
 
 /**
  * Загрузить все станции от Яндекса (с кэшированием)
@@ -29,12 +46,12 @@ const CACHE_TTL = 24 * 60 * 60 * 1000;
 async function getAllStationsFromYandex() {
     if (stationsCache && stationsCacheTime &&
         Date.now() - stationsCacheTime < CACHE_TTL) {
-        console.log('✅ Используем кэш станций в памяти');
+        console.log('Используем кэш станций в памяти');
         return stationsCache;
     }
 
     try {
-        console.log('📦 Загрузка ВСЕХ станций от Яндекса (это займёт время)...');
+        console.log('Загрузка ВСЕХ станций от Яндекса (это займёт время)...');
 
         const params = new URLSearchParams({
             apikey: API_KEY,
@@ -42,7 +59,7 @@ async function getAllStationsFromYandex() {
         });
 
         const url = `${BASE_URL}/stations_list/?${params}`;
-        console.log('   🌐 URL:', url);
+        console.log('  URL:', url);
 
         const response = await fetch(url, { timeout: 120000 });
 
@@ -70,27 +87,12 @@ async function getAllStationsFromYandex() {
             }
         }
 
-        console.log(`✅ Загружено ~${count} станций, кэш обновлён`);
+        console.log(`Загружено ~${count} станций, кэш обновлён`);
         return data;
 
     } catch (error) {
-        console.error('❌ Ошибка загрузки станций:', error);
+        console.error('Ошибка загрузки станций:', error);
         throw error;
-    }
-}
-
-function logRequest(endpoint, params) {
-    console.log(`\n🔹 Запрос к ${endpoint}:`);
-    console.log('   Параметры:', params);
-    console.log('   API ключ:', API_KEY ? `${API_KEY.slice(0, 10)}...` : '❌ Не задан');
-}
-
-function logResponse(endpoint, statusCode, data) {
-    console.log(`🔸 Ответ от ${endpoint}:`);
-    console.log('   Статус:', statusCode);
-    console.log('   Станций найдено:', data?.stations?.length ?? 'N/A');
-    if (data?.error) {
-        console.log('   ❌ Ошибка:', data.error);
     }
 }
 
@@ -102,17 +104,17 @@ function logResponse(endpoint, statusCode, data) {
 app.get('/api/stations/all', async (req, res) => {
     try {
         console.log('\n' + '='.repeat(50));
-        console.log('🔹 Запрос к /api/stations/all');
+        console.log('Запрос к /api/stations/all');
 
         const data = await getAllStationsFromYandex();
 
-        console.log('🔸 Ответ: кэш возвращён');
+        console.log('Ответ: кэш возвращён');
         console.log('='.repeat(50) + '\n');
 
         res.json(data);
 
     } catch (error) {
-        console.error('❌ Ошибка /api/stations/all:', error);
+        console.error('Ошибка /api/stations/all:', error);
         res.status(500).json({ error: 'Не удалось загрузить станции: ' + error.message });
     }
 });
@@ -130,7 +132,7 @@ app.get('/api/stations/search', async (req, res) => {
         console.log(`🔹 Поиск станций: q="${q}"`);
 
         if (!q || q.length < 2) {
-            console.log('🔸 Ответ: пусто (короткий запрос)');
+            console.log('Ответ: пусто (короткий запрос)');
             console.log('='.repeat(50) + '\n');
             return res.json({ stations: [] });
         }
@@ -171,13 +173,13 @@ app.get('/api/stations/search', async (req, res) => {
             }
         }
 
-        console.log(`🔸 Найдено ${results.length} станций для "${q}"`);
+        console.log(`Найдено ${results.length} станций для "${q}"`);
         console.log('='.repeat(50) + '\n');
 
         res.json({ stations: results.slice(0, 50) });
 
     } catch (error) {
-        console.error('❌ Ошибка поиска:', error);
+        console.error('Ошибка поиска:', error);
         res.status(500).json({ error: 'Ошибка поиска: ' + error.message });
     }
 });
@@ -206,28 +208,28 @@ app.get('/api/stations/nearby', async (req, res) => {
         });
 
         const url = `${BASE_URL}/nearest_stations/?${params}`;
-        console.log('   🌐 URL:', url);
+        console.log('  URL:', url);
 
-        console.log('   ⏳ Отправка запроса к Яндекс...');
+        console.log('  Отправка запроса к Яндекс...');
         const response = await fetch(url);
         const data = await response.json();
 
         logResponse('nearest_stations', response.status, data);
 
         if (data.stations && data.stations.length > 0) {
-            console.log(`📊 Всего станций от Яндекса: ${data.stations.length}`);
+            console.log(`Всего станций от Яндекса: ${data.stations.length}`);
 
             const trainStations = data.stations.filter(station => {
                 return station.transport_type === 'train';
             });
 
-            console.log(`🚉 После фильтра ЖД: ${trainStations.length}`);
+            console.log(`После фильтра ЖД: ${trainStations.length}`);
 
             const suburbanStations = trainStations.filter(station => {
                 return station.type_choices && station.type_choices.suburban;
             });
 
-            console.log(`🚃 После фильтра электричек: ${suburbanStations.length}`);
+            console.log(`После фильтра электричек: ${suburbanStations.length}`);
 
             data.stations = suburbanStations;
             data.pagination.total = suburbanStations.length;
@@ -241,7 +243,7 @@ app.get('/api/stations/nearby', async (req, res) => {
 
         res.json(data);
     } catch (error) {
-        console.error('❌ Критическая ошибка при поиске станций:', error);
+        console.error('Критическая ошибка при поиске станций:', error);
         res.status(500).json({ error: 'Внутренняя ошибка сервера: ' + error.message });
     }
 });
@@ -274,7 +276,7 @@ app.get('/api/schedule/station', async (req, res) => {
         }
 
         const url = `${BASE_URL}/schedule/?${params}`;
-        console.log('   🌐 URL:', url);
+        console.log('  URL:', url);
 
         const response = await fetch(url);
         const data = await response.json();
@@ -288,7 +290,7 @@ app.get('/api/schedule/station', async (req, res) => {
 
         res.json(data);
     } catch (error) {
-        console.error('❌ Ошибка при получении расписания станции:', error);
+        console.error('Ошибка при получении расписания станции:', error);
         res.status(500).json({ error: 'Внутренняя ошибка сервера' });
     }
 });
@@ -321,7 +323,7 @@ app.get('/api/schedule/route', async (req, res) => {
         }
 
         const url = `${BASE_URL}/search/?${params}`;
-        console.log('   🌐 URL:', url);
+        console.log('  URL:', url);
 
         const response = await fetch(url);
         const data = await response.json();
@@ -335,7 +337,7 @@ app.get('/api/schedule/route', async (req, res) => {
 
         res.json(data);
     } catch (error) {
-        console.error('❌ Ошибка при получении маршрута:', error);
+        console.error('Ошибка при получении маршрута:', error);
         res.status(500).json({ error: 'Внутренняя ошибка сервера' });
     }
 });
@@ -349,10 +351,10 @@ app.get('/api/health', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log('\n🚀 Сервер запущен!');
-    console.log(`   📍 Порт: http://localhost:${PORT}`);
-    console.log(`   📍 Health: http://localhost:${PORT}/api/health`);
-    console.log(`   🔑 API ключ: ${API_KEY ? '✅ Загружен (' + API_KEY.slice(0, 10) + '...)' : '❌ Не задан'}`);
-    console.log(`   🗄️ Кэш станций: отключён (загрузится при первом запросе)`);
-    console.log('   📝 Логи запросов будут выводиться в консоль при каждом запросе\n');
+    console.log('\nСервер запущен!');
+    console.log(`  Порт: http://localhost:${PORT}`);
+    console.log(`  Health: http://localhost:${PORT}/api/health`);
+    console.log(`  API ключ: ${API_KEY ? 'Загружен (' + API_KEY.slice(0, 10) + '...)' : 'Не задан'}`);
+    console.log(`   Кэш станций: отключён (загрузится при первом запросе)`);
+    console.log('   Логи запросов будут выводиться в консоль при каждом запросе\n');
 });
