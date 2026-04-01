@@ -41,7 +41,6 @@ function logResponse(endpoint, statusCode, data) {
 
 /**
  * Загрузить все станции от Яндекса (с кэшированием)
- * Вызывается ТОЛЬКО один раз за сессию сервера
  */
 async function getAllStationsFromYandex() {
     if (stationsCache && stationsCacheTime &&
@@ -119,6 +118,7 @@ app.get('/api/stations/all', async (req, res) => {
     }
 });
 
+
 /**
  * GET /api/stations/search
  * Поиск станций по названию (ЛОКАЛЬНО, после загрузки всех)
@@ -154,6 +154,11 @@ app.get('/api/stations/search', async (req, res) => {
                             const title = station.title || '';
 
                             if (title.toLowerCase().includes(query)) {
+                                const isRailway = station.transport_type === 'train' ||
+                                    station.type_choices?.suburban === true;
+
+                                if (!isRailway) continue;
+
                                 const codes = station.codes || {};
                                 results.push({
                                     code: codes.yandex_code || codes.code || station.code,
@@ -164,7 +169,9 @@ app.get('/api/stations/search', async (req, res) => {
                                     lat: station.latitude,
                                     lng: station.longitude,
                                     type: station.station_type || 'station',
-                                    settlement: settlement.title || ''
+                                    settlement: settlement.title || '',
+                                    transport_type: station.transport_type,
+                                    type_choices: station.type_choices
                                 });
                             }
                         }
@@ -173,7 +180,7 @@ app.get('/api/stations/search', async (req, res) => {
             }
         }
 
-        console.log(`Найдено ${results.length} станций для "${q}"`);
+        console.log(`Найдено ${results.length} ж/д станций для "${q}"`);
         console.log('='.repeat(50) + '\n');
 
         res.json({ stations: results.slice(0, 50) });

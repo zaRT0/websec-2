@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { apiService } from '../services/api';
+import { getSourceOfVectorLayerByName } from '../utils/layerHelpers';
 import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
@@ -21,7 +22,6 @@ export default function MapModal({ isOpen, onClose, onStationSelect }) {
     const popupRef = useRef(null);
     const mapRef = useRef(null);
     const [map, setMap] = useState(null);
-    const [vectorSource, setVectorSource] = useState(null);
     const [stations, setStations] = useState([]);
     const [loading, setLoading] = useState(false);
     const [selectedStation, setSelectedStationLocal] = useState(null);
@@ -29,19 +29,15 @@ export default function MapModal({ isOpen, onClose, onStationSelect }) {
 
     const {
         setSelectedStation,
-        addFavorite,
-        mapCenter,
-        mapZoom,
-        setMapCenter,
-        setMapZoom
+        addFavorite
     } = useStore();
 
     useEffect(() => {
         if (!isOpen || !mapContainerRef.current) return;
 
-        const vector = new VectorSource();
+        const vectorSource = new VectorSource();
         const vectorLayer = new VectorLayer({
-            source: vector,
+            source: vectorSource,
             style: new Style({
                 image: new CircleStyle({
                     radius: 8,
@@ -51,6 +47,8 @@ export default function MapModal({ isOpen, onClose, onStationSelect }) {
             })
         });
 
+        vectorLayer.set('name', 'stations-layer');
+
         const newMap = new Map({
             target: mapContainerRef.current,
             layers: [
@@ -58,30 +56,13 @@ export default function MapModal({ isOpen, onClose, onStationSelect }) {
                 vectorLayer,
             ],
             view: new View({
-                center: fromLonLat(mapCenter || [37.6173, 55.7558]),
-                zoom: mapZoom || 10,
+                center: fromLonLat([37.6173, 55.7558]),
+                zoom: 10,
             }),
         });
 
         mapRef.current = newMap;
         setMap(newMap);
-        setVectorSource(vector);
-
-        const view = newMap.getView();
-        view.on('change:center', () => {
-            const center = view.getCenter();
-            if (center) {
-                const lonLat = olToLonLat(center);
-                setMapCenter([lonLat[0], lonLat[1]]);
-            }
-        });
-
-        view.on('change:resolution', () => {
-            const zoom = view.getZoom();
-            if (zoom !== undefined) {
-                setMapZoom(zoom);
-            }
-        });
 
         newMap.on('pointermove', (e) => {
             const feature = newMap.forEachFeatureAtPixel(e.pixel, (f) => f);
@@ -98,13 +79,13 @@ export default function MapModal({ isOpen, onClose, onStationSelect }) {
         const popupElement = document.createElement('div');
         popupElement.className = 'map-popup';
         popupElement.style.cssText = `
-      background: white;
-      border-radius: 12px;
-      padding: 16px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-      min-width: 200px;
-      z-index: 1000;
-    `;
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            min-width: 200px;
+            z-index: 1000;
+        `;
 
         const popup = new Overlay({
             element: popupElement,
@@ -126,13 +107,13 @@ export default function MapModal({ isOpen, onClose, onStationSelect }) {
                     popup.setPosition(e.coordinate);
 
                     popupElement.innerHTML = `
-            <div style="font-weight:700;margin-bottom:12px;font-size:15px;">${station.title}</div>
-            <div style="font-size:12px;color:#666;margin-bottom:12px;">${station.station_type || 'Станция'}</div>
-            <div style="display:flex;gap:8px;">
-              <button class="popup-btn-primary" style="flex:1;padding:10px 16px;background:#00B4DB;color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px;">🔍 Расписание</button>
-              <button class="popup-btn-favorite" style="padding:10px 16px;background:#FF9800;color:white;border:none;border-radius:8px;font-size:16px;cursor:pointer;">⭐</button>
-            </div>
-          `;
+                        <div style="font-weight:700;margin-bottom:12px;font-size:15px;">${station.title}</div>
+                        <div style="font-size:12px;color:#666;margin-bottom:12px;">${station.station_type || 'Станция'}</div>
+                        <div style="display:flex;gap:8px;">
+                            <button class="popup-btn-primary" style="flex:1;padding:10px 16px;background:#00B4DB;color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px;">🔍 Расписание</button>
+                            <button class="popup-btn-favorite" style="padding:10px 16px;background:#FF9800;color:white;border:none;border-radius:8px;font-size:16px;cursor:pointer;">⭐</button>
+                        </div>
+                    `;
 
                     popupElement.querySelector('.popup-btn-primary').onclick = () => handleShowSchedule(station);
                     popupElement.querySelector('.popup-btn-favorite').onclick = () => handleAddFavorite(station);
@@ -143,9 +124,6 @@ export default function MapModal({ isOpen, onClose, onStationSelect }) {
             const coord = e.coordinate;
             const lonLat = olToLonLat(coord);
 
-            setMapCenter([lonLat[0], lonLat[1]]);
-            setMapZoom(newMap.getView().getZoom());
-
             setLoading(true);
             popup.setPosition(undefined);
             setSelectedStationLocal(null);
@@ -153,25 +131,29 @@ export default function MapModal({ isOpen, onClose, onStationSelect }) {
             apiService.searchStationsByCoords(lonLat[1], lonLat[0], 50)
                 .then((data) => {
                     setStations(data.stations || []);
-                    vector.clear();
 
-                    (data.stations || []).forEach((station) => {
-                        const lng = station.lng || station.lon;
-                        const lat = station.lat;
-                        if (!lng || !lat) return;
+                    const vectorSource = getSourceOfVectorLayerByName(newMap, 'stations-layer');
+                    if (vectorSource) {
+                        vectorSource.clear();
 
-                        const feature = new Feature({
-                            geometry: new Point(fromLonLat([lng, lat])),
-                            name: station.title,
-                            code: station.code,
+                        (data.stations || []).forEach((station) => {
+                            const lng = station.lng || station.lon;
+                            const lat = station.lat;
+                            if (!lng || !lat) return;
+
+                            const feature = new Feature({
+                                geometry: new Point(fromLonLat([lng, lat])),
+                                name: station.title,
+                                code: station.code,
+                            });
+                            feature.set('stationData', station);
+                            vectorSource.addFeature(feature);
                         });
-                        feature.set('stationData', station);
-                        vector.addFeature(feature);
-                    });
 
-                    if (data.stations?.length > 0) {
-                        const extent = vector.getExtent();
-                        newMap.getView().fit(extent, { padding: [50, 50, 50, 50], maxZoom: 14 });
+                        if (data.stations?.length > 0) {
+                            const extent = vectorSource.getExtent();
+                            newMap.getView().fit(extent, { padding: [50, 50, 50, 50], maxZoom: 14 });
+                        }
                     }
                 })
                 .catch((error) => console.error('Ошибка:', error))

@@ -24,7 +24,6 @@ function App() {
   } = useStore();
 
   const [mapOpen, setMapOpen] = useState(false);
-  const searchFormRef = useRef(null);
 
   const handleSearchComplete = async (stationCode, date, event, toStationCode = null) => {
     setScheduleLoading(true);
@@ -42,9 +41,6 @@ function App() {
 
       setSchedule(data);
 
-      if (searchFormRef.current && selectedStation?.title) {
-        searchFormRef.current.updateStationField?.(selectedStation.title);
-      }
     } catch (error) {
       console.error('Ошибка загрузки расписания:', error);
       setScheduleError(error.response?.data?.message || 'Ошибка загрузки расписания');
@@ -65,7 +61,6 @@ function App() {
           <h2 className="section__title"> Поиск расписания</h2>
           <Tabs />
           <SearchForm
-            ref={searchFormRef}
             onSearchComplete={handleSearchComplete}
             onOpenMap={handleOpenMap}
           />
@@ -141,7 +136,6 @@ function App() {
         isOpen={mapOpen}
         onClose={handleCloseMap}
         onStationSelect={handleSearchComplete}
-        searchFormRef={searchFormRef}
       />
 
       <footer className="footer">

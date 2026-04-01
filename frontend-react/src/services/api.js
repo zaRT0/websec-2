@@ -1,48 +1,81 @@
-import axios from 'axios';
-
-const api = axios.create({
-    baseURL: '/api',
-    timeout: 30000,
-});
+const API_BASE_URL = 'http://localhost:3001/api';
 
 export const apiService = {
-    async checkHealth() {
-        const response = await api.get('/health');
-        return response.data;
-    },
-
     async searchStations(query) {
-        const response = await api.get('/stations/search', {
-            params: { q: query }
-        });
-        return response.data;
+        try {
+            const response = await fetch(`${API_BASE_URL}/stations/search?q=${encodeURIComponent(query)}`);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Ошибка поиска станций:', error);
+            throw error;
+        }
     },
 
-    async getAllStations() {
-        const response = await api.get('/stations/all');
-        return response.data;
-    },
+    async searchStationsByCoords(lat, lng, distance = 50) {
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/stations/nearby?lat=${lat}&lng=${lng}&distance=${distance}`
+            );
 
-    async searchStationsByCoords(lat, lng, radius = 50) {
-        const response = await api.get('/stations/nearby', {
-            params: { lat, lng, radius }
-        });
-        return response.data;
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Ошибка поиска координат:', error);
+            throw error;
+        }
     },
 
     async getStationSchedule(stationCode, date, event = 'departure') {
-        const response = await api.get('/schedule/station', {
-            params: { station: stationCode, date, event }
-        });
-        return response.data;
+        try {
+            const params = new URLSearchParams({
+                station: stationCode,
+                date: date,
+                event: event
+            });
+
+            const response = await fetch(`${API_BASE_URL}/schedule/station?${params}`);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Ошибка получения расписания:', error);
+            throw error;
+        }
     },
 
-    async getRouteSchedule(fromCode, toCode, date) {
-        const response = await api.get('/schedule/route', {
-            params: { from: fromCode, to: toCode, date }
-        });
-        return response.data;
-    },
+    async getRouteSchedule(fromStation, toStation, date) {
+        try {
+            const params = new URLSearchParams({
+                from: fromStation,
+                to: toStation,
+                date: date
+            });
+
+            const response = await fetch(`${API_BASE_URL}/schedule/route?${params}`);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Ошибка получения маршрута:', error);
+            throw error;
+        }
+    }
 };
-
-export default apiService;

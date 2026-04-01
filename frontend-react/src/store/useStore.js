@@ -18,12 +18,6 @@ export const useStore = create(
             scheduleError: null,
             eventType: 'departure',
 
-            mapCenter: [37.6173, 55.7558],
-            mapZoom: 10,
-
-            setMapCenter: (center) => set({ mapCenter: center }),
-            setMapZoom: (zoom) => set({ mapZoom: zoom }),
-
             setCurrentTab: (tab) => set({ currentTab: tab }),
 
             setSelectedStation: (station) => set({ selectedStation: station }),

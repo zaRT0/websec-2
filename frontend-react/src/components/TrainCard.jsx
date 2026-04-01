@@ -1,4 +1,4 @@
-import { formatTime } from '../utils/formatters';
+import { formatTime, getExpressTypeName, formatDuration } from '../utils/formatters';
 
 export default function TrainCard({ train, eventType = 'departure' }) {
     const departure = train.departure;
@@ -151,30 +151,4 @@ export default function TrainCard({ train, eventType = 'departure' }) {
             </div>
         </div>
     );
-}
-
-function getExpressTypeName(type) {
-    if (!type) return '';
-
-    const typeMap = {
-        'express': 'Ласточка',
-        'fast': 'Экспресс',
-        'regional': 'Пригородный',
-        'aero': 'Аэроэкспресс',
-    };
-
-    return typeMap[type] || type;
-}
-
-function formatDuration(minutes) {
-    if (!minutes || isNaN(minutes)) return '';
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    if (h > 0 && m > 0) {
-        return `${h}ч ${m}м`;
-    } else if (h > 0) {
-        return `${h}ч`;
-    } else {
-        return `${m}м`;
-    }
 }
